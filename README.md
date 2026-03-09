@@ -6,7 +6,6 @@
   <p align="center">
     <img alt="Python" src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue">
     <a href="https://github.com/jannik-cas/mcptools/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jannik-cas/mcptools/actions/workflows/ci.yml/badge.svg"></a>
-    <a href="https://codecov.io/gh/jannik-cas/mcptools"><img alt="Coverage" src="https://codecov.io/gh/jannik-cas/mcptools/branch/main/graph/badge.svg"></a>
     <a href="https://github.com/jannik-cas/mcptools/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/jannik-cas/mcptools"></a>
     <a href="https://github.com/jannik-cas/mcptools/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/jannik-cas/mcptools?style=social"></a>
   </p>
