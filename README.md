@@ -58,7 +58,7 @@ Every MCP-powered IDE talks to MCP servers — but when tools break, there's zer
 ## Quick Start
 
 ```bash
-pip install mcptools
+pip install git+https://github.com/jannik-cas/mcptools.git
 
 # Diagnose your setup in 2 seconds
 mcptools doctor
@@ -155,7 +155,7 @@ mcptools replay session.json --speed 2 --filter "tools/*"
 
 | | mcptools | MCP Inspector | Manual debugging |
 |---|---------|---------------|-----------------|
-| Install | `pip install mcptools` | Clone + npm | N/A |
+| Install | `pip install git+...` | Clone + npm | N/A |
 | Config diagnosis | `mcptools doctor` | - | Read JSON manually |
 | Server inspection | `mcptools inspect <cmd>` | Web UI | - |
 | Traffic proxy | `mcptools proxy` | - | Print statements |
