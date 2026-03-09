@@ -13,11 +13,15 @@ console = Console()
 
 @click.group()
 @click.version_option(package_name="mcptools")
-def cli() -> None:
+@click.option("-v", "--verbose", is_flag=True, help="Print raw JSON-RPC messages to stderr.")
+@click.pass_context
+def cli(ctx: click.Context, verbose: bool) -> None:
     """mcptools — mitmproxy for MCP.
 
     Intercept, inspect, debug, and replay MCP server traffic.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
 
 
 @cli.command()

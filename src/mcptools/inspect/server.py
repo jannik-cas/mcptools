@@ -10,29 +10,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
 console = Console()
 
-# JSON-RPC message ID counter
-_next_id = 0
-
-
-def _make_id() -> int:
-    global _next_id
-    _next_id += 1
-    return _next_id
-
-
-def _jsonrpc_request(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    msg: dict[str, Any] = {
-        "jsonrpc": "2.0",
-        "id": _make_id(),
-        "method": method,
-    }
-    if params:
-        msg["params"] = params
-    return msg
+_ids = IdGenerator()
 
 
 async def inspect_server(command: list[str], timeout: int = 10) -> None:
@@ -50,13 +33,14 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
 
     try:
         # Initialize
-        init_msg = _jsonrpc_request(
+        init_msg = make_request(
             "initialize",
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {"name": "mcptools", "version": "0.1.0"},
             },
+            msg_id=_ids.next(),
         )
         await transport.send(init_msg)
         init_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
@@ -73,7 +57,7 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
         capabilities = init_response.get("result", {}).get("capabilities", {})
 
         # Send initialized notification
-        await transport.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        await transport.send(make_request("notifications/initialized"))
 
         # Print server info
         server_name = server_info.get("name", "Unknown")
@@ -111,7 +95,7 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
 
 async def _list_tools(transport: StdioTransport, timeout: int) -> None:
     """List all tools from the server."""
-    msg = _jsonrpc_request("tools/list")
+    msg = make_request("tools/list", msg_id=_ids.next())
     await transport.send(msg)
     response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
@@ -142,7 +126,7 @@ async def _list_tools(transport: StdioTransport, timeout: int) -> None:
 
 async def _list_resources(transport: StdioTransport, timeout: int) -> None:
     """List all resources from the server."""
-    msg = _jsonrpc_request("resources/list")
+    msg = make_request("resources/list", msg_id=_ids.next())
     await transport.send(msg)
     response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
@@ -172,7 +156,7 @@ async def _list_resources(transport: StdioTransport, timeout: int) -> None:
 
 async def _list_prompts(transport: StdioTransport, timeout: int) -> None:
     """List all prompts from the server."""
-    msg = _jsonrpc_request("prompts/list")
+    msg = make_request("prompts/list", msg_id=_ids.next())
     await transport.send(msg)
     response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 

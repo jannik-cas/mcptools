@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 
+from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -119,6 +121,7 @@ class McpDashboard(App):
         super().__init__()
         self.server_config = server_config
         self._latencies: list[float] = []
+        self._messages: list[McpMessage] = []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -136,6 +139,7 @@ class McpDashboard(App):
 
     def add_message(self, msg: McpMessage) -> None:
         """Add a message from the proxy to the dashboard."""
+        self._messages.append(msg)
         log = self.query_one("#message-log", MessageLog)
         log.add_message(msg)
 
@@ -149,15 +153,27 @@ class McpDashboard(App):
             self._latencies.append(msg.data["_latency_ms"])
             stats.avg_latency = sum(self._latencies) / len(self._latencies)
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Show full JSON payload when a row is selected."""
+        row_index = event.cursor_row
+        if 0 <= row_index < len(self._messages):
+            msg = self._messages[row_index]
+            payload = json.dumps(msg.data, indent=2)
+            detail = self.query_one("#detail-panel", Static)
+            detail.update(Syntax(payload, "json", theme="monokai", line_numbers=False))
+
     def action_clear(self) -> None:
         """Clear the message log."""
         table = self.query_one("#messages-table", DataTable)
         table.clear()
+        self._messages.clear()
         self._latencies.clear()
         stats = self.query_one("#stats", StatsPanel)
         stats.total_messages = 0
         stats.total_errors = 0
         stats.avg_latency = 0.0
+        detail = self.query_one("#detail-panel", Static)
+        detail.update("Select a message to see details")
 
 
 async def run_tui_proxy(server_config: ServerConfig) -> None:

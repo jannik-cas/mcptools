@@ -16,6 +16,7 @@ from mcptools.config.parser import (
     find_config,
     load_config,
 )
+from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
 console = Console()
@@ -80,20 +81,20 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
             message=f"Failed to start: {e}",
         )
 
+    ids = IdGenerator()
     start_time = time.time()
 
     try:
         # Initialize
-        init_msg = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
+        init_msg = make_request(
+            "initialize",
+            {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {"name": "mcptools-doctor", "version": "0.1.0"},
             },
-        }
+            msg_id=ids.next(),
+        )
         await transport.send(init_msg)
         response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
@@ -116,7 +117,7 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
         capabilities = response.get("result", {}).get("capabilities", {})
 
         # Send initialized notification
-        await transport.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        await transport.send(make_request("notifications/initialized"))
 
         tool_count = 0
         resource_count = 0
@@ -124,21 +125,21 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
 
         # Count tools
         if "tools" in capabilities:
-            await transport.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+            await transport.send(make_request("tools/list", msg_id=ids.next()))
             tools_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
             if tools_resp and "result" in tools_resp:
                 tool_count = len(tools_resp["result"].get("tools", []))
 
         # Count resources
         if "resources" in capabilities:
-            await transport.send({"jsonrpc": "2.0", "id": 3, "method": "resources/list"})
+            await transport.send(make_request("resources/list", msg_id=ids.next()))
             res_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
             if res_resp and "result" in res_resp:
                 resource_count = len(res_resp["result"].get("resources", []))
 
         # Count prompts
         if "prompts" in capabilities:
-            await transport.send({"jsonrpc": "2.0", "id": 4, "method": "prompts/list"})
+            await transport.send(make_request("prompts/list", msg_id=ids.next()))
             prompts_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
             if prompts_resp and "result" in prompts_resp:
                 prompt_count = len(prompts_resp["result"].get("prompts", []))

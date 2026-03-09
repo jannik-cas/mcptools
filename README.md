@@ -1,42 +1,31 @@
 <p align="center">
   <h1 align="center">mcptools</h1>
   <p align="center">
-    <strong>mitmproxy for MCP</strong> — intercept, inspect, debug, and replay Model Context Protocol traffic
+    <strong>mitmproxy for MCP</strong> — intercept, inspect, debug, and replay MCP server traffic
   </p>
   <p align="center">
     <a href="https://pypi.org/project/mcptools/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mcptools?color=blue"></a>
     <a href="https://pypi.org/project/mcptools/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mcptools"></a>
+    <a href="https://github.com/jannik-cas/mcptools/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jannik-cas/mcptools/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://codecov.io/gh/jannik-cas/mcptools"><img alt="Coverage" src="https://codecov.io/gh/jannik-cas/mcptools/branch/main/graph/badge.svg"></a>
     <a href="https://github.com/jannik-cas/mcptools/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/jannik-cas/mcptools"></a>
+    <a href="https://github.com/jannik-cas/mcptools/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/jannik-cas/mcptools?style=social"></a>
   </p>
 </p>
 
 ---
 
-Every developer using **Claude Code**, **Cursor**, **Windsurf**, or **VS Code Copilot** relies on MCP servers for tool use. But when things break — tools not showing up, mysterious timeouts, config typos — there's no easy way to see what's going on under the hood.
+<!-- TODO: Record a terminal demo with vhs or asciinema and embed here:
+     ![mcptools demo](assets/demo.gif)
 
-**mcptools** is the missing DevTools for MCP. One `pip install` and you can inspect any server, diagnose config issues, intercept live traffic, and record sessions for replay.
-
-## The Problem
-
-```
-You: "Why isn't my MCP tool showing up?"
-You: *restarts IDE*
-You: *re-reads config for the 5th time*
-You: *adds random print statements to server code*
-You: *gives up and rewrites the config from scratch*
-```
-
-Sound familiar? MCP has no built-in observability. You're flying blind.
-
-## The Fix
-
-```bash
-pip install mcptools
-mcptools doctor --config ~/.claude/claude_desktop_config.json
-```
+     Record with: vhs demo.tape  (see https://github.com/charmbracelet/vhs)
+     Or: asciinema rec demo.cast && agg demo.cast demo.gif
+-->
 
 ```
-Config: ~/.claude/claude_desktop_config.json
+$ mcptools doctor --config examples/demo_config.json
+
+Config: examples/demo_config.json
 
   Checking fetch...          ✓ 1 tool, 1 prompt
   Checking time...           ✓ 2 tools
@@ -46,13 +35,63 @@ Config: ~/.claude/claude_desktop_config.json
 Summary: 2 healthy, 1 error
 ```
 
+```
+$ mcptools inspect uvx mcp-server-fetch
+
+╭───────────────────────── MCP Server ─────────────────────────╮
+│ mcp-fetch v1.26.0                                             │
+╰──────────────────────────────────────────────────────────────╯
+                         Tools (1)
+┏━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Name  ┃ Description                ┃ Parameters             ┃
+┡━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ fetch │ Fetches a URL and extracts │ url: string*,          │
+│       │ its contents as markdown.  │ max_length: integer,   │
+│       │                            │ raw: boolean           │
+└───────┴────────────────────────────┴────────────────────────┘
+```
+
+---
+
+Every MCP-powered IDE talks to MCP servers — but when tools break, there's zero visibility. **mcptools** gives you `doctor`, `inspect`, `proxy`, `record`, and `replay` for any MCP server. One `pip install`, works with any IDE, no config changes needed.
+
+## Quick Start
+
+```bash
+pip install mcptools
+
+# Diagnose your setup in 2 seconds
+mcptools doctor
+
+# See what any server offers
+mcptools inspect uvx mcp-server-fetch
+
+# Try the demo config
+mcptools doctor --config examples/demo_config.json
+```
+
+## The Problem
+
+```
+You: "Why isn't my MCP tool showing up?"
+*restarts IDE* → *re-reads config* → *adds print statements* → *gives up*
+```
+
+MCP has no built-in observability. You're flying blind.
+
+## The Fix
+
+```bash
+mcptools doctor
+```
+
 Found the issue in 2 seconds.
 
 ## Features
 
 ### `mcptools doctor` — Instant Config Diagnosis
 
-Reads your IDE's MCP config, spins up each server, checks connectivity, and reports what's healthy and what's broken — all in one command.
+Reads your IDE's MCP config, spins up each server, checks connectivity, and reports what's healthy and what's broken.
 
 ```bash
 mcptools doctor                                          # auto-detects config
@@ -77,32 +116,7 @@ Catches: missing commands, unset env vars, timeouts, slow servers, init errors.
 Connect to any MCP server and list all its tools, resources, and prompts — without launching an IDE.
 
 ```bash
-$ mcptools inspect uvx mcp-server-fetch
-```
-```
-╭───────────────────────────── MCP Server ─────────────────────────────╮
-│ mcp-fetch v1.26.0                                                    │
-╰──────────────────────────────────────────────────────────────────────╯
-                                Tools (1)
-┏━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Name  ┃ Description                       ┃ Parameters              ┃
-┡━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ fetch │ Fetches a URL from the internet   │ url: string*,           │
-│       │ and extracts its contents as      │ max_length: integer,    │
-│       │ markdown.                         │ start_index: integer,   │
-│       │                                   │ raw: boolean            │
-└───────┴───────────────────────────────────┴─────────────────────────┘
-                             Prompts (1)
-┏━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┓
-┃ Name  ┃ Description                                    ┃ Arguments ┃
-┡━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━┩
-│ fetch │ Fetch a URL and extract its contents           │ url*      │
-└───────┴────────────────────────────────────────────────┴───────────┘
-```
-
-Works with any server — Python, Node, Go. If it speaks MCP over stdio, mcptools can inspect it:
-
-```bash
+mcptools inspect uvx mcp-server-fetch
 mcptools inspect uvx mcp-server-time
 mcptools inspect python my_server.py
 mcptools inspect npx @modelcontextprotocol/server-filesystem /tmp
@@ -110,7 +124,7 @@ mcptools inspect npx @modelcontextprotocol/server-filesystem /tmp
 
 ### `mcptools proxy` — Live Traffic Interception
 
-Sits between your IDE and MCP server as a transparent proxy. See every JSON-RPC message flowing through with a real-time TUI dashboard.
+Sits between your IDE and MCP server as a transparent proxy. See every JSON-RPC message with a real-time TUI dashboard.
 
 ```
 IDE (Claude Code / Cursor / Windsurf)
@@ -122,46 +136,19 @@ MCP Server
 
 ```bash
 mcptools proxy --config ~/.claude/claude_desktop_config.json --server github
-mcptools proxy --config ~/.cursor/mcp.json --no-tui    # log mode, no TUI
+mcptools proxy --config ~/.cursor/mcp.json --no-tui    # log mode
 ```
 
-The TUI shows:
-- Live message stream with request/response pairing
-- Per-call latency measurement
-- Error highlighting
-- Running stats (total messages, errors, avg latency)
+The TUI shows: live message stream, per-call latency, error highlighting, running stats, and full JSON payload details.
 
 ### `mcptools record` / `mcptools replay` — Session Capture
 
-Record an entire MCP session to JSON for offline analysis, sharing with teammates, or filing bug reports.
+Record an entire MCP session to JSON for offline analysis, sharing, or filing bug reports.
 
 ```bash
-# Record everything
 mcptools record --config ~/.claude/claude_desktop_config.json -o session.json
-
-# Replay it later
 mcptools replay session.json
-
-# Replay at 2x speed, only tool calls
 mcptools replay session.json --speed 2 --filter "tools/*"
-```
-
-The recorded JSON includes timestamps, directions, full payloads, and latency — everything needed to reconstruct what happened.
-
-## Quick Start
-
-```bash
-# Install
-pip install mcptools
-
-# Check your setup
-mcptools doctor
-
-# Inspect a server
-mcptools inspect uvx mcp-server-fetch
-
-# See all commands
-mcptools --help
 ```
 
 ## Why mcptools?
@@ -181,11 +168,12 @@ mcptools --help
 ```
 src/mcptools/
 ├── cli.py              # Click CLI — all 5 commands
+├── jsonrpc.py          # Shared JSON-RPC 2.0 helpers
 ├── config/parser.py    # Multi-IDE config detection & parsing
 ├── proxy/
 │   ├── interceptor.py  # Core proxy — message interception & relay
 │   └── transport.py    # Stdio transport, JSON-RPC message handling
-├── tui/dashboard.py    # Textual TUI with live stats
+├── tui/dashboard.py    # Textual TUI with live stats & detail panel
 ├── inspect/server.py   # Server introspection via MCP protocol
 ├── record/
 │   ├── recorder.py     # Session recording to JSON
@@ -195,24 +183,16 @@ src/mcptools/
 
 Built on: [mcp SDK](https://github.com/modelcontextprotocol/python-sdk) (protocol), [Textual](https://github.com/textualize/textual) (TUI), [Rich](https://github.com/textualize/rich) (formatting), [Click](https://click.palletsprojects.com) (CLI), [Pydantic](https://docs.pydantic.dev) (validation).
 
-## Development
+## Quick Start for Contributors
 
 ```bash
 git clone https://github.com/jannik-cas/mcptools.git
 cd mcptools
-uv venv && uv pip install -e . && uv pip install pytest pytest-asyncio
-pytest
+pip install -e ".[dev]"
+make test
 ```
 
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-Good first issues:
-- Add support for SSE transport (currently stdio only)
-- Add `mcptools call` command to invoke a tool directly from CLI
-- Support `.env` file loading for server environment variables
-- Add JSON output mode (`--json`) for all commands
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. [Good first issues](https://github.com/jannik-cas/mcptools/labels/good%20first%20issue) are a great place to start.
 
 ## License
 

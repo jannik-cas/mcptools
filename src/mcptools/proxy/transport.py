@@ -81,15 +81,23 @@ class StdioTransport:
         if self.process is None or self.process.stdout is None:
             raise RuntimeError("Transport not started")
 
-        line = await self.process.stdout.readline()
-        if not line:
-            return None
+        while True:
+            line = await self.process.stdout.readline()
+            if not line:
+                return None
 
-        text = line.decode().strip()
-        if not text:
-            return None
+            text = line.decode().strip()
+            if not text:
+                return None
 
-        return json.loads(text)
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                print(
+                    f"Warning: skipping malformed JSON from server: {text[:200]}",
+                    file=sys.stderr,
+                )
+                continue
 
     async def read_stderr(self) -> str | None:
         """Read a line from stderr (for diagnostics). Returns None on EOF."""
@@ -108,7 +116,10 @@ class StdioTransport:
                 self.process.terminate()
                 await asyncio.wait_for(self.process.wait(), timeout=5)
             except (asyncio.TimeoutError, ProcessLookupError):
-                self.process.kill()
+                try:
+                    self.process.kill()
+                except ProcessLookupError:
+                    pass
 
     @property
     def is_running(self) -> bool:
@@ -131,15 +142,23 @@ class StdinReader:
         if self._reader is None:
             raise RuntimeError("Reader not started")
 
-        line = await self._reader.readline()
-        if not line:
-            return None
+        while True:
+            line = await self._reader.readline()
+            if not line:
+                return None
 
-        text = line.decode().strip()
-        if not text:
-            return None
+            text = line.decode().strip()
+            if not text:
+                return None
 
-        return json.loads(text)
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                print(
+                    f"Warning: skipping malformed JSON from client: {text[:200]}",
+                    file=sys.stderr,
+                )
+                continue
 
 
 class StdoutWriter:
