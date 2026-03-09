@@ -22,11 +22,7 @@ console = Console()
 
 
 class McpInitError(Exception):
-    """Raised when the MCP initialize handshake fails.
-
-    Attributes:
-        message: Human-readable description of the failure.
-    """
+    """Raised when the MCP initialize handshake fails."""
 
 
 async def mcp_initialize(
