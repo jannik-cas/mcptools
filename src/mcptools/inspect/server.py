@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from mcptools.handshake import McpInitError, emit_error, mcp_initialize
+from mcptools.handshake import McpInitError, emit_error, mcp_initialize, start_transport
 from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
@@ -36,13 +36,7 @@ async def inspect_server(
     """
     transport = StdioTransport(command=command)
 
-    try:
-        await transport.start()
-    except FileNotFoundError:
-        emit_error(f"Command not found: {command[0]}", json_output)
-        return
-    except Exception as e:
-        emit_error(f"Failed to start server: {e}", json_output)
+    if not await start_transport(transport, json_output):
         return
 
     result: dict[str, Any] = {}

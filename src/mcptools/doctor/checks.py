@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
+from pydantic import BaseModel
 from rich.console import Console
 
 from mcptools.config.parser import (
@@ -22,9 +23,10 @@ from mcptools.proxy.transport import StdioTransport
 
 console = Console()
 
+Status = Literal["healthy", "error", "warning", "skipped"]
 
-@dataclass
-class CheckResult:
+
+class CheckResult(BaseModel):
     """Result of a single server health check.
 
     Attributes:
@@ -39,7 +41,7 @@ class CheckResult:
     """
 
     server_name: str
-    status: str  # "healthy", "error", "warning", "skipped"
+    status: Status
     message: str
     tool_count: int = 0
     resource_count: int = 0
@@ -48,11 +50,154 @@ class CheckResult:
     details: list[str] | None = None
 
 
+def _validate_server_config(name: str, server: ServerConfig) -> CheckResult | None:
+    """Check for configuration problems that would make connecting pointless.
+
+    Catches two classes of issue before we spend time spawning a
+    subprocess:
+
+    * **Missing command** — the ``command`` field is empty (stdio
+      transport requires an executable).
+    * **Unresolved environment variables** — env values still in
+      ``${VAR}`` form indicate the variable was not present in the
+      host environment at parse time.
+
+    Args:
+        name: Display name for this server.
+        server: Parsed server configuration.
+
+    Returns:
+        A ``CheckResult`` with ``"error"`` or ``"warning"`` status if
+        validation fails, or *None* if the config looks OK to proceed.
+    """
+    if server.transport == "stdio" and not server.command:
+        return CheckResult(
+            server_name=name,
+            status="error",
+            message="No command specified",
+        )
+
+    missing_env = [
+        key for key, value in server.env.items() if value.startswith("${") and value.endswith("}")
+    ]
+    if missing_env:
+        return CheckResult(
+            server_name=name,
+            status="warning",
+            message=f"Missing env vars: {', '.join(missing_env)}",
+            details=[f"Set {k} in your environment" for k in missing_env],
+        )
+
+    return None
+
+
+async def _count_capabilities(
+    transport: StdioTransport,
+    capabilities: dict,
+    ids: IdGenerator,
+    timeout: int,
+) -> tuple[int, int, int]:
+    """Enumerate tools, resources, and prompts from a connected server.
+
+    Sends ``tools/list``, ``resources/list``, and ``prompts/list``
+    requests for each capability the server advertised during the
+    handshake.  Capabilities not present in the *capabilities* dict
+    are skipped (counted as zero).
+
+    Args:
+        transport: Active server transport (must already be initialised).
+        capabilities: Capabilities dict from the initialize response,
+            used to decide which list requests to send.
+        ids: ID generator for assigning request IDs.
+        timeout: Seconds to wait for each individual list response.
+
+    Returns:
+        Tuple of ``(tool_count, resource_count, prompt_count)``.
+    """
+    counts = []
+    for capability, method, key in [
+        ("tools", "tools/list", "tools"),
+        ("resources", "resources/list", "resources"),
+        ("prompts", "prompts/list", "prompts"),
+    ]:
+        if capability not in capabilities:
+            counts.append(0)
+            continue
+        await transport.send(make_request(method, msg_id=ids.next()))
+        resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
+        if resp and "result" in resp:
+            counts.append(len(resp["result"].get(key, [])))
+        else:
+            counts.append(0)
+
+    return counts[0], counts[1], counts[2]
+
+
+def _build_health_result(
+    name: str,
+    tool_count: int,
+    resource_count: int,
+    prompt_count: int,
+    latency: float,
+) -> CheckResult:
+    """Build a ``CheckResult`` by assessing capability counts and latency.
+
+    Applies the following latency thresholds:
+
+    * **> 5 000 ms** — ``"warning"`` status with "Slow response" note.
+    * **> 2 000 ms** — ``"healthy"`` status with "Moderate latency" note.
+    * **Otherwise** — ``"healthy"`` with no latency remark.
+
+    The summary message lists the counts (e.g. ``"3 tools, 1 resource"``)
+    followed by any latency warnings.
+
+    Args:
+        name: Server display name.
+        tool_count: Number of tools the server exposes.
+        resource_count: Number of resources the server exposes.
+        prompt_count: Number of prompts the server exposes.
+        latency: Total round-trip time of the health check in milliseconds.
+
+    Returns:
+        A ``CheckResult`` with the computed status and human-readable
+        summary message.
+    """
+    status: Status = "healthy"
+    warnings = []
+    if latency > 5000:
+        status = "warning"
+        warnings.append(f"Slow response ({latency:.0f}ms)")
+    elif latency > 2000:
+        warnings.append(f"Moderate latency ({latency:.0f}ms)")
+
+    parts = []
+    if tool_count:
+        parts.append(f"{tool_count} tool{'s' if tool_count != 1 else ''}")
+    if resource_count:
+        parts.append(f"{resource_count} resource{'s' if resource_count != 1 else ''}")
+    if prompt_count:
+        parts.append(f"{prompt_count} prompt{'s' if prompt_count != 1 else ''}")
+
+    message = ", ".join(parts) if parts else "connected (no capabilities)"
+    if warnings:
+        message += f" — {'; '.join(warnings)}"
+
+    return CheckResult(
+        server_name=name,
+        status=status,
+        message=message,
+        tool_count=tool_count,
+        resource_count=resource_count,
+        prompt_count=prompt_count,
+        latency_ms=latency,
+    )
+
+
 async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> CheckResult:
     """Check health of a single MCP server.
 
-    Validates the server command, checks for unresolved environment
-    variables, then attempts to connect and enumerate capabilities.
+    Validates configuration, connects to the server, and enumerates
+    its capabilities.
 
     Args:
         name: Display name for this server entry.
@@ -62,30 +207,10 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
     Returns:
         A ``CheckResult`` summarising the server's health.
     """
+    config_error = _validate_server_config(name, server)
+    if config_error is not None:
+        return config_error
 
-    # Check command exists
-    if server.transport == "stdio" and not server.command:
-        return CheckResult(
-            server_name=name,
-            status="error",
-            message="No command specified",
-        )
-
-    # Check for missing env vars
-    missing_env = []
-    for key, value in server.env.items():
-        if value.startswith("${") and value.endswith("}"):
-            missing_env.append(key)
-
-    if missing_env:
-        return CheckResult(
-            server_name=name,
-            status="warning",
-            message=f"Missing env vars: {', '.join(missing_env)}",
-            details=[f"Set {k} in your environment" for k in missing_env],
-        )
-
-    # Try connecting
     command = [server.command, *server.args]
     transport = StdioTransport(command=command, env=server.env)
 
@@ -113,71 +238,15 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
             transport, timeout, ids=ids, client_name="mcptools-doctor"
         )
         capabilities = init_result.get("capabilities", {})
-
-        tool_count = 0
-        resource_count = 0
-        prompt_count = 0
-
-        # Count tools
-        if "tools" in capabilities:
-            await transport.send(make_request("tools/list", msg_id=ids.next()))
-            tools_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
-            if tools_resp and "result" in tools_resp:
-                tool_count = len(tools_resp["result"].get("tools", []))
-
-        # Count resources
-        if "resources" in capabilities:
-            await transport.send(make_request("resources/list", msg_id=ids.next()))
-            res_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
-            if res_resp and "result" in res_resp:
-                resource_count = len(res_resp["result"].get("resources", []))
-
-        # Count prompts
-        if "prompts" in capabilities:
-            await transport.send(make_request("prompts/list", msg_id=ids.next()))
-            prompts_resp = await asyncio.wait_for(transport.receive(), timeout=timeout)
-            if prompts_resp and "result" in prompts_resp:
-                prompt_count = len(prompts_resp["result"].get("prompts", []))
-
+        tool_count, resource_count, prompt_count = await _count_capabilities(
+            transport, capabilities, ids, timeout
+        )
         latency = (time.time() - start_time) * 1000
 
-        # Determine status based on latency
-        status = "healthy"
-        warnings = []
-        if latency > 5000:
-            status = "warning"
-            warnings.append(f"Slow response ({latency:.0f}ms)")
-        elif latency > 2000:
-            warnings.append(f"Moderate latency ({latency:.0f}ms)")
-
-        parts = []
-        if tool_count:
-            parts.append(f"{tool_count} tool{'s' if tool_count != 1 else ''}")
-        if resource_count:
-            parts.append(f"{resource_count} resource{'s' if resource_count != 1 else ''}")
-        if prompt_count:
-            parts.append(f"{prompt_count} prompt{'s' if prompt_count != 1 else ''}")
-
-        message = ", ".join(parts) if parts else "connected (no capabilities)"
-        if warnings:
-            message += f" — {'; '.join(warnings)}"
-
-        return CheckResult(
-            server_name=name,
-            status=status,
-            message=message,
-            tool_count=tool_count,
-            resource_count=resource_count,
-            prompt_count=prompt_count,
-            latency_ms=latency,
-        )
+        return _build_health_result(name, tool_count, resource_count, prompt_count, latency)
 
     except McpInitError as e:
-        return CheckResult(
-            server_name=name,
-            status="error",
-            message=str(e),
-        )
+        return CheckResult(server_name=name, status="error", message=str(e))
     except asyncio.TimeoutError:
         return CheckResult(
             server_name=name,
@@ -193,11 +262,7 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
             details=["Server may be writing non-JSON to stdout"],
         )
     except Exception as e:
-        return CheckResult(
-            server_name=name,
-            status="error",
-            message=f"Unexpected error: {e}",
-        )
+        return CheckResult(server_name=name, status="error", message=f"Unexpected error: {e}")
     finally:
         await transport.stop()
 
@@ -210,6 +275,65 @@ def _status_icon(status: str) -> str:
     elif status == "warning":
         return "[yellow]⚠[/yellow]"
     return "[dim]○[/dim]"
+
+
+def _format_results_json(config_path: Path, results: list[CheckResult]) -> str:
+    """Serialise check results to the ``--json`` output format.
+
+    Produces a JSON object with a ``config`` path and a ``servers``
+    array.  Each server entry uses short keys (``name``, ``tools``,
+    ``resources``, ``prompts``) for a compact, script-friendly
+    representation.
+
+    Args:
+        config_path: Config file path included as metadata in the output.
+        results: List of ``CheckResult`` instances to serialise.
+
+    Returns:
+        Pretty-printed JSON string (2-space indent).
+    """
+    output = {
+        "config": str(config_path),
+        "servers": [
+            {
+                "name": r.server_name,
+                "status": r.status,
+                "message": r.message,
+                "tools": r.tool_count,
+                "resources": r.resource_count,
+                "prompts": r.prompt_count,
+                "latency_ms": round(r.latency_ms, 1),
+            }
+            for r in results
+        ],
+    }
+    return json.dumps(output, indent=2)
+
+
+def _print_summary(results: list[CheckResult]) -> None:
+    """Print a coloured one-line summary of all check outcomes.
+
+    Groups results by status and prints counts with colour coding
+    (green for healthy, yellow for warnings, red for errors).
+
+    Args:
+        results: List of ``CheckResult`` instances from the completed
+            health checks.
+    """
+    console.print()
+    healthy = sum(1 for r in results if r.status == "healthy")
+    errors = sum(1 for r in results if r.status == "error")
+    warnings = sum(1 for r in results if r.status == "warning")
+
+    summary_parts = []
+    if healthy:
+        summary_parts.append(f"[green]{healthy} healthy[/green]")
+    if warnings:
+        summary_parts.append(f"[yellow]{warnings} warning{'s' if warnings != 1 else ''}[/yellow]")
+    if errors:
+        summary_parts.append(f"[red]{errors} error{'s' if errors != 1 else ''}[/red]")
+
+    console.print(f"Summary: {', '.join(summary_parts)}")
 
 
 async def run_doctor(
@@ -229,15 +353,13 @@ async def run_doctor(
         timeout: Seconds to wait per server.
         json_output: If *True*, emit results as a JSON object.
     """
-    import json as json_mod
-
     # Find config
     if config_path is None:
         config_path = find_config()
 
     if config_path is None:
         if json_output:
-            print(json_mod.dumps({"error": "No MCP config file found"}))
+            print(json.dumps({"error": "No MCP config file found"}))
         else:
             console.print("[yellow]No MCP config file found.[/yellow]")
             console.print("\nSearched locations:")
@@ -254,7 +376,7 @@ async def run_doctor(
 
     if not config.servers:
         if json_output:
-            print(json_mod.dumps({"error": "No servers found in config file"}))
+            print(json.dumps({"error": "No servers found in config file"}))
         else:
             console.print("[yellow]No servers found in config file.[/yellow]")
         return
@@ -287,36 +409,6 @@ async def run_doctor(
                     console.print(f"    [dim]→ {detail}[/dim]")
 
     if json_output:
-        output = {
-            "config": str(config_path),
-            "servers": [
-                {
-                    "name": r.server_name,
-                    "status": r.status,
-                    "message": r.message,
-                    "tools": r.tool_count,
-                    "resources": r.resource_count,
-                    "prompts": r.prompt_count,
-                    "latency_ms": round(r.latency_ms, 1),
-                }
-                for r in results
-            ],
-        }
-        print(json_mod.dumps(output, indent=2))
-        return
-
-    # Summary
-    console.print()
-    healthy = sum(1 for r in results if r.status == "healthy")
-    errors = sum(1 for r in results if r.status == "error")
-    warnings = sum(1 for r in results if r.status == "warning")
-
-    summary_parts = []
-    if healthy:
-        summary_parts.append(f"[green]{healthy} healthy[/green]")
-    if warnings:
-        summary_parts.append(f"[yellow]{warnings} warning{'s' if warnings != 1 else ''}[/yellow]")
-    if errors:
-        summary_parts.append(f"[red]{errors} error{'s' if errors != 1 else ''}[/red]")
-
-    console.print(f"Summary: {', '.join(summary_parts)}")
+        print(_format_results_json(config_path, results))
+    else:
+        _print_summary(results)
