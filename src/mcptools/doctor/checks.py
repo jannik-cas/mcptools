@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
-from mcptools.config.parser import load_config, find_config, McpConfig, ServerConfig, CONFIG_LOCATIONS
+from mcptools.config.parser import (
+    CONFIG_LOCATIONS,
+    ServerConfig,
+    find_config,
+    load_config,
+)
 from mcptools.proxy.transport import StdioTransport
 
 console = Console()
@@ -239,9 +240,7 @@ async def run_doctor(
     # Filter servers
     servers_to_check = config.servers
     if server_names:
-        servers_to_check = {
-            k: v for k, v in config.servers.items() if k in server_names
-        }
+        servers_to_check = {k: v for k, v in config.servers.items() if k in server_names}
         missing = set(server_names) - set(servers_to_check.keys())
         for name in missing:
             console.print(f"[yellow]Server '{name}' not found in config.[/yellow]")

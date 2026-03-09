@@ -35,9 +35,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jannikc/mcptools"
-Repository = "https://github.com/jannikc/mcptools"
-Issues = "https://github.com/jannikc/mcptools/issues"
+Homepage = "https://github.com/jannik-cas/mcptools"
+Repository = "https://github.com/jannik-cas/mcptools"
+Issues = "https://github.com/jannik-cas/mcptools/issues"
 
 [project.scripts]
 mcptools = "mcptools.cli:cli"

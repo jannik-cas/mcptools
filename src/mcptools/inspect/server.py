@@ -9,8 +9,6 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
-from rich.tree import Tree
 
 from mcptools.proxy.transport import StdioTransport
 
@@ -52,11 +50,14 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
 
     try:
         # Initialize
-        init_msg = _jsonrpc_request("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "mcptools", "version": "0.1.0"},
-        })
+        init_msg = _jsonrpc_request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "mcptools", "version": "0.1.0"},
+            },
+        )
         await transport.send(init_msg)
         init_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
@@ -77,11 +78,13 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
         # Print server info
         server_name = server_info.get("name", "Unknown")
         server_version = server_info.get("version", "?")
-        console.print(Panel(
-            f"[bold]{server_name}[/bold] v{server_version}",
-            title="MCP Server",
-            border_style="blue",
-        ))
+        console.print(
+            Panel(
+                f"[bold]{server_name}[/bold] v{server_version}",
+                title="MCP Server",
+                border_style="blue",
+            )
+        )
 
         # List tools
         if "tools" in capabilities:
@@ -193,8 +196,7 @@ async def _list_prompts(transport: StdioTransport, timeout: int) -> None:
         desc = prompt.get("description", "")
         args = prompt.get("arguments", [])
         args_str = ", ".join(
-            f"{a.get('name', '?')}{'*' if a.get('required') else ''}"
-            for a in args
+            f"{a.get('name', '?')}{'*' if a.get('required') else ''}" for a in args
         )
         table.add_row(name, desc, args_str)
 

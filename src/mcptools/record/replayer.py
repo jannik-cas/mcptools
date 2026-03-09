@@ -5,14 +5,11 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import json
-import time
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
-from rich.table import Table
 
 console = Console()
 
@@ -27,22 +24,27 @@ async def run_replayer(
         session = json.load(f)
 
     messages = session.get("messages", [])
-    version = session.get("mcptools_version", "?")
     duration = session.get("duration", 0)
 
-    console.print(Panel(
-        f"Session: {session_path.name}\n"
-        f"Messages: {len(messages)} | Duration: {duration:.1f}s | Speed: {speed}x",
-        title="MCP Session Replay",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            f"Session: {session_path.name}\n"
+            f"Messages: {len(messages)} | Duration: {duration:.1f}s | Speed: {speed}x",
+            title="MCP Session Replay",
+            border_style="blue",
+        )
+    )
 
     # Filter messages if requested
     if filter_method:
         messages = [
-            m for m in messages
+            m
+            for m in messages
             if fnmatch.fnmatch(m.get("data", {}).get("method", ""), filter_method)
-            or (not m.get("data", {}).get("method") and _is_response_to_filtered(m, messages, filter_method))
+            or (
+                not m.get("data", {}).get("method")
+                and _is_response_to_filtered(m, messages, filter_method)
+            )
         ]
         console.print(f"[dim]Filtered to {len(messages)} messages matching '{filter_method}'[/dim]")
 

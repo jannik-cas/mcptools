@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
 
 from rich.console import Console
-from rich.table import Table
-from rich.text import Text
 
-from mcptools.config.parser import load_config, ServerConfig
-from mcptools.proxy.transport import McpMessage, StdioTransport, StdinReader, StdoutWriter
+from mcptools.config.parser import ServerConfig, load_config
+from mcptools.proxy.transport import McpMessage, StdinReader, StdioTransport, StdoutWriter
 
 console = Console(stderr=True)
 
@@ -140,7 +138,8 @@ def _print_message(msg: McpMessage) -> None:
         latency = f" [{latency_color}]{ms}ms[/{latency_color}]"
 
     if msg.is_error:
-        console.print(f"[{color}]{arrow} {method}[/{color}]{latency} [red]ERROR: {msg.error_message}[/red]")
+        err = msg.error_message
+        console.print(f"[{color}]{arrow} {method}[/{color}]{latency} [red]ERROR: {err}[/red]")
     else:
         console.print(f"[{color}]{arrow} {method}[/{color}]{latency}")
 
@@ -177,6 +176,7 @@ async def run_proxy(
     if use_tui:
         try:
             from mcptools.tui.dashboard import run_tui_proxy
+
             await run_tui_proxy(server_config)
         except ImportError:
             console.print("[yellow]TUI not available, falling back to log mode.[/yellow]")

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mcptools.config.parser import parse_config, ServerConfig, McpConfig
+from mcptools.config.parser import parse_config
 
 
 @pytest.fixture

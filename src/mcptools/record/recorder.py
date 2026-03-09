@@ -8,7 +8,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from mcptools.config.parser import load_config, ServerConfig
+from mcptools.config.parser import load_config
 from mcptools.proxy.interceptor import ProxyInterceptor, _print_message
 from mcptools.proxy.transport import McpMessage
 
@@ -25,12 +25,14 @@ class SessionRecorder:
 
     def on_message(self, msg: McpMessage) -> None:
         """Callback for each intercepted message."""
-        self.messages.append({
-            "timestamp": msg.timestamp,
-            "relative_time": msg.timestamp - self.start_time,
-            "direction": msg.direction,
-            "data": msg.data,
-        })
+        self.messages.append(
+            {
+                "timestamp": msg.timestamp,
+                "relative_time": msg.timestamp - self.start_time,
+                "direction": msg.direction,
+                "data": msg.data,
+            }
+        )
         _print_message(msg)
 
     def save(self) -> None:

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Footer, Header, Label, Static
+from textual.widgets import DataTable, Footer, Header, Static
 
 from mcptools.config.parser import ServerConfig
 from mcptools.proxy.transport import McpMessage

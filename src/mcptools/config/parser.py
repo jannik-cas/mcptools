@@ -30,7 +30,10 @@ class McpConfig(BaseModel):
 # Known config file locations per IDE
 CONFIG_LOCATIONS: list[tuple[str, Path]] = [
     ("Claude Desktop", Path.home() / ".claude" / "claude_desktop_config.json"),
-    ("Claude Desktop (macOS)", Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"),
+    (
+        "Claude Desktop (macOS)",
+        Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+    ),
     ("Cursor", Path.home() / ".cursor" / "mcp.json"),
     ("VS Code", Path.home() / ".vscode" / "mcp.json"),
     ("Windsurf", Path.home() / ".codeium" / "windsurf" / "mcp_config.json"),
