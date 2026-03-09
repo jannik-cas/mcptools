@@ -215,27 +215,37 @@ async def run_doctor(
     config_path: Path | None = None,
     server_names: list[str] | None = None,
     timeout: int = 10,
+    json_output: bool = False,
 ) -> None:
     """Run health checks on MCP servers."""
+    import json as json_mod
+
     # Find config
     if config_path is None:
         config_path = find_config()
 
     if config_path is None:
-        console.print("[yellow]No MCP config file found.[/yellow]")
-        console.print("\nSearched locations:")
-        for name, path in CONFIG_LOCATIONS:
-            exists = "[green]exists[/green]" if path.exists() else "[dim]not found[/dim]"
-            console.print(f"  {name}: {path} ({exists})")
-        console.print("\nUse --config to specify a config file path.")
+        if json_output:
+            print(json_mod.dumps({"error": "No MCP config file found"}))
+        else:
+            console.print("[yellow]No MCP config file found.[/yellow]")
+            console.print("\nSearched locations:")
+            for name, path in CONFIG_LOCATIONS:
+                exists = "[green]exists[/green]" if path.exists() else "[dim]not found[/dim]"
+                console.print(f"  {name}: {path} ({exists})")
+            console.print("\nUse --config to specify a config file path.")
         return
 
-    console.print(f"[dim]Config:[/dim] {config_path}\n")
+    if not json_output:
+        console.print(f"[dim]Config:[/dim] {config_path}\n")
 
     config = load_config(config_path)
 
     if not config.servers:
-        console.print("[yellow]No servers found in config file.[/yellow]")
+        if json_output:
+            print(json_mod.dumps({"error": "No servers found in config file"}))
+        else:
+            console.print("[yellow]No servers found in config file.[/yellow]")
         return
 
     # Filter servers
@@ -243,8 +253,9 @@ async def run_doctor(
     if server_names:
         servers_to_check = {k: v for k, v in config.servers.items() if k in server_names}
         missing = set(server_names) - set(servers_to_check.keys())
-        for name in missing:
-            console.print(f"[yellow]Server '{name}' not found in config.[/yellow]")
+        if not json_output:
+            for name in missing:
+                console.print(f"[yellow]Server '{name}' not found in config.[/yellow]")
 
     # Run checks concurrently
     tasks = {
@@ -254,14 +265,34 @@ async def run_doctor(
 
     results: list[CheckResult] = []
     for name, task in tasks.items():
-        console.print(f"  Checking [bold]{name}[/bold]...", end=" ")
+        if not json_output:
+            console.print(f"  Checking [bold]{name}[/bold]...", end=" ")
         result = await task
         results.append(result)
-        console.print(f"{_status_icon(result.status)} {result.message}")
+        if not json_output:
+            console.print(f"{_status_icon(result.status)} {result.message}")
+            if result.details:
+                for detail in result.details:
+                    console.print(f"    [dim]→ {detail}[/dim]")
 
-        if result.details:
-            for detail in result.details:
-                console.print(f"    [dim]→ {detail}[/dim]")
+    if json_output:
+        output = {
+            "config": str(config_path),
+            "servers": [
+                {
+                    "name": r.server_name,
+                    "status": r.status,
+                    "message": r.message,
+                    "tools": r.tool_count,
+                    "resources": r.resource_count,
+                    "prompts": r.prompt_count,
+                    "latency_ms": round(r.latency_ms, 1),
+                }
+                for r in results
+            ],
+        }
+        print(json_mod.dumps(output, indent=2))
+        return
 
     # Summary
     console.print()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import click
@@ -27,7 +28,8 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @cli.command()
 @click.argument("server_command", nargs=-1, required=True)
 @click.option("--timeout", "-t", default=10, help="Connection timeout in seconds.")
-def inspect(server_command: tuple[str, ...], timeout: int) -> None:
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON.")
+def inspect(server_command: tuple[str, ...], timeout: int, json_output: bool) -> None:
     """Inspect an MCP server — list tools, resources, and prompts.
 
     Examples:
@@ -40,7 +42,7 @@ def inspect(server_command: tuple[str, ...], timeout: int) -> None:
     """
     from mcptools.inspect.server import inspect_server
 
-    asyncio.run(inspect_server(list(server_command), timeout=timeout))
+    asyncio.run(inspect_server(list(server_command), timeout=timeout, json_output=json_output))
 
 
 @cli.command()
@@ -57,14 +59,80 @@ def inspect(server_command: tuple[str, ...], timeout: int) -> None:
     help="Specific server name(s) to check. If omitted, checks all.",
 )
 @click.option("--timeout", "-t", default=10, help="Connection timeout in seconds.")
-def doctor(config: Path | None, server: tuple[str, ...], timeout: int) -> None:
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON.")
+def doctor(
+    config: Path | None,
+    server: tuple[str, ...],
+    timeout: int,
+    json_output: bool,
+) -> None:
     """Diagnose MCP server configuration and connectivity issues.
 
     Without --config, auto-detects config from known IDE locations.
     """
     from mcptools.doctor.checks import run_doctor
 
-    asyncio.run(run_doctor(config_path=config, server_names=list(server), timeout=timeout))
+    asyncio.run(
+        run_doctor(
+            config_path=config,
+            server_names=list(server),
+            timeout=timeout,
+            json_output=json_output,
+        )
+    )
+
+
+@cli.command()
+@click.argument("server_command", nargs=-1, required=True)
+@click.option("--tool", "-T", required=True, help="Name of the tool to call.")
+@click.option(
+    "--args",
+    "-a",
+    "tool_args",
+    default=None,
+    help='Tool arguments as JSON string (e.g. \'{"url": "https://example.com"}\').',
+)
+@click.option("--timeout", "-t", default=30, help="Timeout in seconds.")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON.")
+def call(
+    server_command: tuple[str, ...],
+    tool: str,
+    tool_args: str | None,
+    timeout: int,
+    json_output: bool,
+) -> None:
+    """Call a tool on an MCP server directly.
+
+    Connects to the server, invokes the tool, and prints the result.
+    Useful for testing tools without opening an IDE.
+
+    Examples:
+
+        mcptools call uvx mcp-server-fetch --tool fetch --args '{"url": "https://example.com"}'
+
+        mcptools call uvx mcp-server-time --tool get_current_time
+
+        mcptools call python my_server.py --tool greet --args '{"name": "World"}'
+    """
+    from mcptools.inspect.caller import call_tool
+
+    arguments = None
+    if tool_args:
+        try:
+            arguments = json.loads(tool_args)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON in --args:[/red] {e}")
+            raise SystemExit(1) from None
+
+    asyncio.run(
+        call_tool(
+            list(server_command),
+            tool_name=tool,
+            arguments=arguments,
+            timeout=timeout,
+            json_output=json_output,
+        )
+    )
 
 
 @cli.command()

@@ -1,65 +1,74 @@
 # Contributing to mcptools
 
-Thanks for your interest in contributing! Here's how to get started.
-
 ## Setup
 
 ```bash
 git clone https://github.com/jannik-cas/mcptools.git
 cd mcptools
-uv venv && uv pip install -e . && uv pip install pytest pytest-asyncio ruff
+pip install -e ".[dev]"
 ```
 
-## Running Tests
+Or with uv:
 
 ```bash
-pytest                  # run all tests
-pytest -v               # verbose output
-pytest tests/test_cli.py  # specific test file
+uv venv && uv pip install -e ".[dev]"
 ```
 
-## Code Style
-
-We use [Ruff](https://docs.astral.sh/ruff/) for linting and formatting:
+## Running tests
 
 ```bash
-ruff check .            # lint
-ruff format .           # format
+make test          # pytest with coverage
+make lint          # ruff check + format check
+make format        # auto-fix formatting
 ```
 
-## Making Changes
+Or directly:
 
-1. Fork the repo and create a branch from `main`
-2. Make your changes
+```bash
+pytest -v
+ruff check .
+ruff format .
+```
+
+## Making changes
+
+1. Fork the repo, create a branch from `main`
+2. Write your code
 3. Add tests for new functionality
-4. Run `pytest` and `ruff check .` to verify
+4. Run `make test && make lint`
 5. Open a pull request
 
-## Pull Request Guidelines
+## PR guidelines
 
-- Keep PRs focused — one feature or fix per PR
+- One feature or fix per PR
 - Add tests for new commands or behavior changes
-- Update the README if adding new user-facing features
-- Write a clear PR description explaining *why*, not just *what*
+- Update the README if you're adding user-facing features
+- Write a clear description — explain *why*, not just *what*
 
-## Project Structure
+## Project structure
 
 ```
 src/mcptools/
 ├── cli.py              # CLI entry point — add new commands here
+├── jsonrpc.py          # Shared JSON-RPC 2.0 helpers
 ├── config/parser.py    # Config file detection and parsing
 ├── proxy/              # Proxy and transport layer
 ├── tui/                # TUI dashboard (Textual)
-├── inspect/            # Server introspection
+├── inspect/
+│   ├── server.py       # Server introspection
+│   └── caller.py       # Direct tool invocation (mcptools call)
 ├── record/             # Record and replay
 └── doctor/             # Health checks
 ```
 
-## Ideas for Contributions
+## Ideas for contributions
 
-- **SSE transport support** — currently only stdio is implemented
-- **`mcptools call <tool>`** — invoke a tool directly from the CLI
-- **JSON output mode** — `--json` flag for scripting/piping
+Things that would genuinely be useful but aren't built yet:
+
+- **SSE transport support** — only stdio is implemented right now
 - **`.env` file support** — load server env vars from `.env` files
-- **Config generation** — `mcptools init` to scaffold a config file
-- **More health checks** — detect duplicate server names, invalid JSON schemas, etc.
+- **`mcptools init`** — scaffold a config file interactively
+- **JSON output for `proxy`** — structured log output for `--no-tui` mode
+- **More health checks** — detect duplicate server names, invalid JSON schemas, version mismatches
+- **Shell completions** — bash/zsh/fish completions for commands and `--server` names
+- **Config validation** — `mcptools lint` to check config files for common mistakes

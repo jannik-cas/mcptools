@@ -13,13 +13,6 @@
 
 ---
 
-<!-- TODO: Record a terminal demo with vhs or asciinema and embed here:
-     ![mcptools demo](assets/demo.gif)
-
-     Record with: vhs demo.tape  (see https://github.com/charmbracelet/vhs)
-     Or: asciinema rec demo.cast && agg demo.cast demo.gif
--->
-
 ```
 $ mcptools doctor --config examples/demo_config.json
 
@@ -34,8 +27,55 @@ Summary: 2 healthy, 1 error
 ```
 
 ```
-$ mcptools inspect uvx mcp-server-fetch
+$ mcptools call uvx mcp-server-fetch --tool fetch --args '{"url": "https://example.com"}'
 
+╭──── fetch ────╮
+│ # Example     │
+│ Domain        │
+│ This domain   │
+│ is for use in │
+│ illustrative  │
+│ examples...   │
+╰───────────────╯
+```
+
+---
+
+MCP servers talk to your IDE over stdio, but when something breaks you get zero feedback. No logs, no error messages, just a tool that doesn't show up and no way to figure out why.
+
+**mcptools** gives you six commands to fix that: `doctor`, `inspect`, `call`, `proxy`, `record`, and `replay`. One install, works with any IDE, no config changes.
+
+## Install
+
+```bash
+pip install git+https://github.com/jannik-cas/mcptools.git
+```
+
+## Commands
+
+### `mcptools doctor` — check if your servers work
+
+Reads your IDE config, starts each server, runs the MCP handshake, reports what's healthy and what's broken.
+
+```bash
+mcptools doctor                                          # auto-detects config
+mcptools doctor --config ~/.cursor/mcp.json              # explicit
+mcptools doctor --server github --server filesystem      # specific servers
+mcptools doctor --json                                   # pipe to jq
+```
+
+Auto-detects configs from Claude Desktop, Cursor, VS Code, and Windsurf.
+
+### `mcptools inspect` — see what a server exposes
+
+```bash
+mcptools inspect uvx mcp-server-fetch
+mcptools inspect python my_server.py
+mcptools inspect npx @modelcontextprotocol/server-filesystem /tmp
+mcptools inspect uvx mcp-server-fetch --json             # machine-readable
+```
+
+```
 ╭───────────────────────── MCP Server ─────────────────────────╮
 │ mcp-fetch v1.26.0                                             │
 ╰──────────────────────────────────────────────────────────────╯
@@ -49,80 +89,22 @@ $ mcptools inspect uvx mcp-server-fetch
 └───────┴────────────────────────────┴────────────────────────┘
 ```
 
----
+### `mcptools call` — invoke a tool directly
 
-Every MCP-powered IDE talks to MCP servers — but when tools break, there's zero visibility. **mcptools** gives you `doctor`, `inspect`, `proxy`, `record`, and `replay` for any MCP server. One `pip install`, works with any IDE, no config changes needed.
-
-## Quick Start
+Test any MCP tool from your terminal without opening an IDE.
 
 ```bash
-pip install git+https://github.com/jannik-cas/mcptools.git
-
-# Diagnose your setup in 2 seconds
-mcptools doctor
-
-# See what any server offers
-mcptools inspect uvx mcp-server-fetch
-
-# Try the demo config
-mcptools doctor --config examples/demo_config.json
+mcptools call uvx mcp-server-fetch --tool fetch --args '{"url": "https://example.com"}'
+mcptools call uvx mcp-server-time --tool get_current_time
+mcptools call python my_server.py --tool greet --args '{"name": "World"}'
+mcptools call uvx mcp-server-fetch --tool fetch --args '{"url": "..."}' --json
 ```
 
-## The Problem
+Returns pretty-printed output by default. JSON responses get syntax highlighting. Pass `--json` for machine-readable output you can pipe to `jq`.
 
-```
-You: "Why isn't my MCP tool showing up?"
-*restarts IDE* → *re-reads config* → *adds print statements* → *gives up*
-```
+### `mcptools proxy` — watch the traffic
 
-MCP has no built-in observability. You're flying blind.
-
-## The Fix
-
-```bash
-mcptools doctor
-```
-
-Found the issue in 2 seconds.
-
-## Features
-
-### `mcptools doctor` — Instant Config Diagnosis
-
-Reads your IDE's MCP config, spins up each server, checks connectivity, and reports what's healthy and what's broken.
-
-```bash
-mcptools doctor                                          # auto-detects config
-mcptools doctor --config ~/.cursor/mcp.json              # explicit config
-mcptools doctor --server github --server filesystem      # check specific servers
-```
-
-Auto-detects configs from:
-
-| IDE | Config Path |
-|-----|-------------|
-| Claude Desktop | `~/.claude/claude_desktop_config.json` |
-| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Cursor | `~/.cursor/mcp.json` |
-| VS Code | `~/.vscode/mcp.json` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-
-Catches: missing commands, unset env vars, timeouts, slow servers, init errors.
-
-### `mcptools inspect` — See What a Server Offers
-
-Connect to any MCP server and list all its tools, resources, and prompts — without launching an IDE.
-
-```bash
-mcptools inspect uvx mcp-server-fetch
-mcptools inspect uvx mcp-server-time
-mcptools inspect python my_server.py
-mcptools inspect npx @modelcontextprotocol/server-filesystem /tmp
-```
-
-### `mcptools proxy` — Live Traffic Interception
-
-Sits between your IDE and MCP server as a transparent proxy. See every JSON-RPC message with a real-time TUI dashboard.
+Transparent man-in-the-middle between your IDE and MCP server.
 
 ```
 IDE (Claude Code / Cursor / Windsurf)
@@ -137,11 +119,11 @@ mcptools proxy --config ~/.claude/claude_desktop_config.json --server github
 mcptools proxy --config ~/.cursor/mcp.json --no-tui    # log mode
 ```
 
-The TUI shows: live message stream, per-call latency, error highlighting, running stats, and full JSON payload details.
+TUI dashboard shows: live message stream, per-call latency, error highlighting, running stats, and a detail panel with the raw JSON-RPC payload.
 
-### `mcptools record` / `mcptools replay` — Session Capture
+### `mcptools record` / `mcptools replay`
 
-Record an entire MCP session to JSON for offline analysis, sharing, or filing bug reports.
+Capture a full MCP session to JSON. Replay it later for debugging or attach it to a bug report.
 
 ```bash
 mcptools record --config ~/.claude/claude_desktop_config.json -o session.json
@@ -149,39 +131,39 @@ mcptools replay session.json
 mcptools replay session.json --speed 2 --filter "tools/*"
 ```
 
-## Why mcptools?
+## `--json` for scripting
 
-| | mcptools | MCP Inspector | Manual debugging |
-|---|---------|---------------|-----------------|
-| Install | `pip install git+...` | Clone + npm | N/A |
-| Config diagnosis | `mcptools doctor` | - | Read JSON manually |
-| Server inspection | `mcptools inspect <cmd>` | Web UI | - |
-| Traffic proxy | `mcptools proxy` | - | Print statements |
-| Record & replay | `mcptools record/replay` | - | - |
-| Works in terminal | Yes | No (browser) | Sort of |
-| Multi-IDE config | Auto-detect | Manual | Manual |
+`doctor`, `inspect`, and `call` all support `--json` for pipeable output:
+
+```bash
+mcptools doctor --json | jq '.servers[] | select(.status != "healthy")'
+mcptools inspect uvx mcp-server-fetch --json | jq '.tools[].name'
+mcptools call uvx mcp-server-time --tool get_current_time --json | jq '.content[0].text'
+```
 
 ## Architecture
 
 ```
 src/mcptools/
-├── cli.py              # Click CLI — all 5 commands
+├── cli.py              # Click CLI — 6 commands
 ├── jsonrpc.py          # Shared JSON-RPC 2.0 helpers
 ├── config/parser.py    # Multi-IDE config detection & parsing
 ├── proxy/
 │   ├── interceptor.py  # Core proxy — message interception & relay
 │   └── transport.py    # Stdio transport, JSON-RPC message handling
 ├── tui/dashboard.py    # Textual TUI with live stats & detail panel
-├── inspect/server.py   # Server introspection via MCP protocol
+├── inspect/
+│   ├── server.py       # Server introspection via MCP protocol
+│   └── caller.py       # Direct tool invocation
 ├── record/
 │   ├── recorder.py     # Session recording to JSON
 │   └── replayer.py     # Session replay with timing & filtering
 └── doctor/checks.py    # Concurrent health checks & diagnostics
 ```
 
-Built on: [mcp SDK](https://github.com/modelcontextprotocol/python-sdk) (protocol), [Textual](https://github.com/textualize/textual) (TUI), [Rich](https://github.com/textualize/rich) (formatting), [Click](https://click.palletsprojects.com) (CLI), [Pydantic](https://docs.pydantic.dev) (validation).
+~2,500 lines of Python. Built on [mcp SDK](https://github.com/modelcontextprotocol/python-sdk), [Textual](https://github.com/textualize/textual), [Rich](https://github.com/textualize/rich), [Click](https://click.palletsprojects.com), [Pydantic](https://docs.pydantic.dev).
 
-## Quick Start for Contributors
+## Contributing
 
 ```bash
 git clone https://github.com/jannik-cas/mcptools.git
@@ -190,7 +172,14 @@ pip install -e ".[dev]"
 make test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. [Good first issues](https://github.com/jannik-cas/mcptools/labels/good%20first%20issue) are a great place to start.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Some things that would be useful:
+
+- **SSE transport** — right now only stdio works
+- **`.env` file support** — load server env vars from `.env`
+- **Config generation** — `mcptools init` to scaffold a config
+- **More health checks** — detect duplicate names, invalid schemas
+
+[Good first issues](https://github.com/jannik-cas/mcptools/labels/good%20first%20issue) are labeled.
 
 ## License
 

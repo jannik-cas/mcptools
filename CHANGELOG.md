@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-03-09
+
+### Added
+
+- `mcptools call` — invoke any MCP tool directly from the terminal without an IDE
+- `--json` flag for `doctor`, `inspect`, and `call` — machine-readable output for scripting
+
+### Changed
+
+- Refactored `inspect/server.py` to separate data fetching from rendering
+- Updated README with new commands and scripting examples
+
 ## [0.1.0] - 2025-01-01
 
 ### Added
