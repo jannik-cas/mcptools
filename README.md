@@ -147,7 +147,8 @@ mcptools call uvx mcp-server-time --tool get_current_time --json | jq '.content[
 src/mcptools/
 ├── cli.py              # Click CLI — 6 commands
 ├── jsonrpc.py          # Shared JSON-RPC 2.0 helpers
-├── config/parser.py    # Multi-IDE config detection & parsing
+├── handshake.py        # MCP initialize handshake & error helpers
+├── config/parser.py    # Multi-IDE config detection, parsing & server selection
 ├── proxy/
 │   ├── interceptor.py  # Core proxy — message interception & relay
 │   └── transport.py    # Stdio transport, JSON-RPC message handling
