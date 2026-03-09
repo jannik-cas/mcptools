@@ -89,6 +89,8 @@ async def inspect_server(command: list[str], timeout: int = 10) -> None:
         console.print("[red]Server timed out. Try increasing --timeout.[/red]")
     except json.JSONDecodeError as e:
         console.print(f"[red]Invalid JSON from server:[/red] {e}")
+    except (ConnectionResetError, BrokenPipeError):
+        console.print("[red]Server closed connection unexpectedly.[/red]")
     finally:
         await transport.stop()
 
