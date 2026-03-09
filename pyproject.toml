@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcptools"
+version = "0.1.0"
+description = "mitmproxy for MCP — intercept, inspect, debug, and replay MCP server traffic"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Jannik Castenow" },
+]
+keywords = ["mcp", "model-context-protocol", "debugging", "proxy", "devtools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "textual>=0.40",
+    "pydantic>=2.0",
+    "mcp>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jannikc/mcptools"
+Repository = "https://github.com/jannikc/mcptools"
+Issues = "https://github.com/jannikc/mcptools/issues"
+
+[project.scripts]
+mcptools = "mcptools.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcptools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
