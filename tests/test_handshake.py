@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from mcptools.handshake import McpInitError, emit_error
+from mcptools.handshake import McpInitError, emit_error, start_transport
 
 
 def test_emit_error_plain() -> None:
@@ -36,3 +36,41 @@ def test_emit_error_json_special_chars(capsys) -> None:
     captured = capsys.readouterr()
     parsed = json.loads(captured.out)
     assert parsed["error"] == 'quote "test" & <angle>'
+
+
+async def test_start_transport_success() -> None:
+    """start_transport returns True when transport starts successfully."""
+    transport = AsyncMock()
+    transport.start = AsyncMock()
+    transport.command = ["echo"]
+
+    result = await start_transport(transport)
+    assert result is True
+    transport.start.assert_awaited_once()
+
+
+async def test_start_transport_file_not_found(capsys) -> None:
+    """start_transport returns False and emits JSON error on FileNotFoundError."""
+    transport = AsyncMock()
+    transport.start = AsyncMock(side_effect=FileNotFoundError())
+    transport.command = ["nonexistent"]
+
+    result = await start_transport(transport, json_output=True)
+    assert result is False
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert "Command not found" in parsed["error"]
+    assert "nonexistent" in parsed["error"]
+
+
+async def test_start_transport_generic_error(capsys) -> None:
+    """start_transport returns False on generic exceptions."""
+    transport = AsyncMock()
+    transport.start = AsyncMock(side_effect=OSError("permission denied"))
+    transport.command = ["server"]
+
+    result = await start_transport(transport, json_output=True)
+    assert result is False
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert "permission denied" in parsed["error"]

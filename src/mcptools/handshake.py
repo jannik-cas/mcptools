@@ -79,6 +79,39 @@ async def mcp_initialize(
     return response.get("result", {})
 
 
+async def start_transport(
+    transport: StdioTransport,
+    json_output: bool = False,
+) -> bool:
+    """Start a server transport with standardised error handling.
+
+    Wraps the common try/except pattern used by ``inspect_server`` and
+    ``call_tool`` when launching a subprocess.  On failure the error is
+    reported via :func:`emit_error` so callers can simply check the
+    return value and bail out.
+
+    Args:
+        transport: The ``StdioTransport`` to start (must have *command*
+            already set).
+        json_output: If *True*, errors are emitted as a JSON object
+            on stdout; otherwise a Rich-formatted message is printed.
+
+    Returns:
+        *True* if the transport started successfully, *False* if the
+        command was not found or any other startup error occurred.
+    """
+    try:
+        await transport.start()
+        return True
+    except FileNotFoundError:
+        cmd = transport.command[0] if transport.command else "?"
+        emit_error(f"Command not found: {cmd}", json_output)
+        return False
+    except Exception as e:
+        emit_error(f"Failed to start server: {e}", json_output)
+        return False
+
+
 def emit_error(message: str, json_output: bool = False) -> None:
     """Print an error to the terminal or as JSON.
 
