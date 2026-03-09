@@ -36,7 +36,7 @@ def test_recorder_save_creates_valid_json(tmp_path: Path) -> None:
     assert output.exists()
     session = json.loads(output.read_text())
 
-    assert session["mcptools_version"] == "0.1.0"
+    assert session["mcptools_version"] == "0.2.0"
     assert session["message_count"] == 2
     assert len(session["messages"]) == 2
     assert "recorded_at" in session

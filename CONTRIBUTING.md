@@ -30,9 +30,23 @@ ruff check .
 ruff format .
 ```
 
+## Branching strategy
+
+We use **GitHub Flow** — all work happens on short-lived branches off `main`:
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `feat/<name>` | New features | `feat/sse-transport` |
+| `fix/<name>` | Bug fixes | `fix/timeout-handling` |
+| `refactor/<name>` | Code improvements | `refactor/dry-handshake` |
+| `docs/<name>` | Documentation only | `docs/api-reference` |
+
+All branches merge to `main` via pull request. Direct pushes to `main` are
+blocked by branch protection rules.
+
 ## Making changes
 
-1. Fork the repo, create a branch from `main`
+1. Fork the repo, create a branch from `main` using the prefixes above
 2. Write your code
 3. Add tests for new functionality
 4. Run `make test && make lint`

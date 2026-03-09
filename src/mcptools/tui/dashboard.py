@@ -1,4 +1,8 @@
-"""TUI dashboard for real-time MCP traffic visualization."""
+"""TUI dashboard for real-time MCP traffic visualization.
+
+Provides a Textual-based terminal UI that displays live message flow,
+statistics, and JSON payloads as the proxy intercepts MCP traffic.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +21,11 @@ from mcptools.proxy.transport import McpMessage
 
 
 class MessageLog(Static):
-    """Widget displaying the scrolling message log."""
+    """Widget displaying the scrolling message log.
+
+    Renders a ``DataTable`` with columns for time, direction, method,
+    latency, and status of each intercepted message.
+    """
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="messages-table")
@@ -28,10 +36,15 @@ class MessageLog(Static):
         table.cursor_type = "row"
 
     def add_message(self, msg: McpMessage) -> None:
+        """Append a message row to the log table.
+
+        Args:
+            msg: The intercepted MCP message to display.
+        """
         table = self.query_one("#messages-table", DataTable)
 
         timestamp = time.strftime("%H:%M:%S", time.localtime(msg.timestamp))
-        direction = "→" if msg.direction == "client_to_server" else "←"
+        direction = "\u2192" if msg.direction == "client_to_server" else "\u2190"
         method = msg.method or "(response)"
 
         latency = ""
@@ -59,7 +72,11 @@ class MessageLog(Static):
 
 
 class StatsPanel(Static):
-    """Widget showing live stats."""
+    """Widget showing live session statistics.
+
+    Displays the server name, total message count, error count, and
+    rolling average latency.
+    """
 
     total_messages: reactive[int] = reactive(0)
     total_errors: reactive[int] = reactive(0)
@@ -77,7 +94,15 @@ class StatsPanel(Static):
 
 
 class McpDashboard(App):
-    """Main TUI application for MCP traffic monitoring."""
+    """Main TUI application for MCP traffic monitoring.
+
+    Layout consists of a sidebar showing live stats and a main area
+    with a scrolling message log and a detail panel that displays the
+    full JSON payload of the selected message.
+
+    Args:
+        server_config: Configuration of the MCP server being proxied.
+    """
 
     CSS = """
     Screen {
@@ -138,7 +163,11 @@ class McpDashboard(App):
         stats.server_name = self.server_config.name
 
     def add_message(self, msg: McpMessage) -> None:
-        """Add a message from the proxy to the dashboard."""
+        """Add a message from the proxy to the dashboard.
+
+        Args:
+            msg: The intercepted MCP message.
+        """
         self._messages.append(msg)
         log = self.query_one("#message-log", MessageLog)
         log.add_message(msg)
@@ -163,7 +192,7 @@ class McpDashboard(App):
             detail.update(Syntax(payload, "json", theme="monokai", line_numbers=False))
 
     def action_clear(self) -> None:
-        """Clear the message log."""
+        """Clear the message log and reset statistics."""
         table = self.query_one("#messages-table", DataTable)
         table.clear()
         self._messages.clear()
@@ -177,7 +206,14 @@ class McpDashboard(App):
 
 
 async def run_tui_proxy(server_config: ServerConfig) -> None:
-    """Run the proxy with the TUI dashboard."""
+    """Run the proxy with the TUI dashboard.
+
+    Starts the proxy as a background async task and runs the Textual
+    application in the foreground.
+
+    Args:
+        server_config: Configuration of the MCP server to proxy.
+    """
     from mcptools.proxy.interceptor import ProxyInterceptor
 
     app = McpDashboard(server_config)

@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from mcptools.handshake import McpInitError, emit_error, mcp_initialize
 from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
@@ -23,53 +24,34 @@ async def inspect_server(
     timeout: int = 10,
     json_output: bool = False,
 ) -> None:
-    """Connect to an MCP server and display its capabilities."""
+    """Connect to an MCP server and display its capabilities.
+
+    Starts the server subprocess, performs the MCP handshake, then
+    queries and displays tools, resources, and prompts.
+
+    Args:
+        command: Server command and arguments (e.g. ``["npx", "server"]``).
+        timeout: Seconds to wait for each server response.
+        json_output: If *True*, emit all output as a single JSON object.
+    """
     transport = StdioTransport(command=command)
 
     try:
         await transport.start()
     except FileNotFoundError:
-        if json_output:
-            print(json.dumps({"error": f"Command not found: {command[0]}"}))
-        else:
-            console.print(f"[red]Command not found:[/red] {command[0]}")
+        emit_error(f"Command not found: {command[0]}", json_output)
         return
     except Exception as e:
-        if json_output:
-            print(json.dumps({"error": f"Failed to start server: {e}"}))
-        else:
-            console.print(f"[red]Failed to start server:[/red] {e}")
+        emit_error(f"Failed to start server: {e}", json_output)
         return
 
     result: dict[str, Any] = {}
 
     try:
-        # Initialize
-        init_msg = make_request(
-            "initialize",
-            {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "mcptools", "version": "0.1.0"},
-            },
-            msg_id=_ids.next(),
-        )
-        await transport.send(init_msg)
-        init_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
+        init_result = await mcp_initialize(transport, timeout, ids=_ids)
 
-        if init_response is None:
-            _emit_error("Server closed connection during initialization.", json_output)
-            return
-
-        if "error" in init_response:
-            _emit_error(f"Initialization error: {init_response['error']}", json_output)
-            return
-
-        server_info = init_response.get("result", {}).get("serverInfo", {})
-        capabilities = init_response.get("result", {}).get("capabilities", {})
-
-        # Send initialized notification
-        await transport.send(make_request("notifications/initialized"))
+        server_info = init_result.get("serverInfo", {})
+        capabilities = init_result.get("capabilities", {})
 
         server_name = server_info.get("name", "Unknown")
         server_version = server_info.get("version", "?")
@@ -87,7 +69,7 @@ async def inspect_server(
 
         # List tools
         if "tools" in capabilities:
-            tools = await _fetch_tools(transport, timeout)
+            tools = await _fetch_capability(transport, "tools/list", "tools", timeout)
             if json_output:
                 result["tools"] = tools
             else:
@@ -95,7 +77,7 @@ async def inspect_server(
 
         # List resources
         if "resources" in capabilities:
-            resources = await _fetch_resources(transport, timeout)
+            resources = await _fetch_capability(transport, "resources/list", "resources", timeout)
             if json_output:
                 result["resources"] = resources
             else:
@@ -103,7 +85,7 @@ async def inspect_server(
 
         # List prompts
         if "prompts" in capabilities:
-            prompts = await _fetch_prompts(transport, timeout)
+            prompts = await _fetch_capability(transport, "prompts/list", "prompts", timeout)
             if json_output:
                 result["prompts"] = prompts
             else:
@@ -118,48 +100,41 @@ async def inspect_server(
         if json_output:
             print(json.dumps(result, indent=2))
 
+    except McpInitError as e:
+        emit_error(str(e), json_output)
     except asyncio.TimeoutError:
-        _emit_error("Server timed out. Try increasing --timeout.", json_output)
+        emit_error("Server timed out. Try increasing --timeout.", json_output)
     except json.JSONDecodeError as e:
-        _emit_error(f"Invalid JSON from server: {e}", json_output)
+        emit_error(f"Invalid JSON from server: {e}", json_output)
     except (ConnectionResetError, BrokenPipeError):
-        _emit_error("Server closed connection unexpectedly.", json_output)
+        emit_error("Server closed connection unexpectedly.", json_output)
     finally:
         await transport.stop()
 
 
-def _emit_error(msg: str, json_output: bool) -> None:
-    if json_output:
-        print(json.dumps({"error": msg}))
-    else:
-        console.print(f"[red]{msg}[/red]")
+async def _fetch_capability(
+    transport: StdioTransport,
+    method: str,
+    result_key: str,
+    timeout: int,
+) -> list[dict[str, Any]]:
+    """Fetch a list capability from the server.
 
+    Args:
+        transport: Active server transport.
+        method: JSON-RPC method name (e.g. ``"tools/list"``).
+        result_key: Key inside the result object (e.g. ``"tools"``).
+        timeout: Seconds to wait for the response.
 
-async def _fetch_tools(transport: StdioTransport, timeout: int) -> list[dict[str, Any]]:
-    msg = make_request("tools/list", msg_id=_ids.next())
+    Returns:
+        List of capability items, or an empty list on error.
+    """
+    msg = make_request(method, msg_id=_ids.next())
     await transport.send(msg)
     response = await asyncio.wait_for(transport.receive(), timeout=timeout)
     if response is None or "error" in response:
         return []
-    return response.get("result", {}).get("tools", [])
-
-
-async def _fetch_resources(transport: StdioTransport, timeout: int) -> list[dict[str, Any]]:
-    msg = make_request("resources/list", msg_id=_ids.next())
-    await transport.send(msg)
-    response = await asyncio.wait_for(transport.receive(), timeout=timeout)
-    if response is None or "error" in response:
-        return []
-    return response.get("result", {}).get("resources", [])
-
-
-async def _fetch_prompts(transport: StdioTransport, timeout: int) -> list[dict[str, Any]]:
-    msg = make_request("prompts/list", msg_id=_ids.next())
-    await transport.send(msg)
-    response = await asyncio.wait_for(transport.receive(), timeout=timeout)
-    if response is None or "error" in response:
-        return []
-    return response.get("result", {}).get("prompts", [])
+    return response.get("result", {}).get(result_key, [])
 
 
 def _print_tools(tools: list[dict[str, Any]]) -> None:

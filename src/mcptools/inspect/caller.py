@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
+from mcptools.handshake import McpInitError, emit_error, mcp_initialize
 from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
@@ -25,53 +26,36 @@ async def call_tool(
     timeout: int = 30,
     json_output: bool = False,
 ) -> None:
-    """Connect to an MCP server, call a tool, and print the result."""
+    """Connect to an MCP server, call a tool, and print the result.
+
+    Performs the MCP handshake, verifies the requested tool exists,
+    invokes it with the provided arguments, and displays the response.
+
+    Args:
+        command: Server command and arguments.
+        tool_name: Name of the tool to invoke.
+        arguments: Optional dict of tool arguments.
+        timeout: Seconds to wait for each server response.
+        json_output: If *True*, emit output as JSON.
+    """
     transport = StdioTransport(command=command)
 
     try:
         await transport.start()
     except FileNotFoundError:
-        if json_output:
-            print(json.dumps({"error": f"Command not found: {command[0]}"}))
-        else:
-            console.print(f"[red]Command not found:[/red] {command[0]}")
+        emit_error(f"Command not found: {command[0]}", json_output)
         return
     except Exception as e:
-        if json_output:
-            print(json.dumps({"error": f"Failed to start server: {e}"}))
-        else:
-            console.print(f"[red]Failed to start server:[/red] {e}")
+        emit_error(f"Failed to start server: {e}", json_output)
         return
 
     try:
-        # Initialize
-        init_msg = make_request(
-            "initialize",
-            {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "mcptools", "version": "0.1.0"},
-            },
-            msg_id=_ids.next(),
-        )
-        await transport.send(init_msg)
-        init_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
-
-        if init_response is None:
-            _error("Server closed connection during initialization.", json_output)
-            return
-
-        if "error" in init_response:
-            _error(f"Initialization error: {init_response['error']}", json_output)
-            return
-
-        # Send initialized notification
-        await transport.send(make_request("notifications/initialized"))
+        init_result = await mcp_initialize(transport, timeout, ids=_ids)
 
         # Check capabilities — verify server has tools
-        capabilities = init_response.get("result", {}).get("capabilities", {})
+        capabilities = init_result.get("capabilities", {})
         if "tools" not in capabilities:
-            _error("Server does not expose any tools.", json_output)
+            emit_error("Server does not expose any tools.", json_output)
             return
 
         # List tools to verify the requested one exists
@@ -79,7 +63,7 @@ async def call_tool(
         tools_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
         if tools_response is None or "error" in tools_response:
-            _error("Failed to list tools.", json_output)
+            emit_error("Failed to list tools.", json_output)
             return
 
         tools = tools_response.get("result", {}).get("tools", [])
@@ -109,13 +93,13 @@ async def call_tool(
         call_response = await asyncio.wait_for(transport.receive(), timeout=timeout)
 
         if call_response is None:
-            _error("Server closed connection during tool call.", json_output)
+            emit_error("Server closed connection during tool call.", json_output)
             return
 
         if "error" in call_response:
             err = call_response["error"]
             msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-            _error(f"Tool error: {msg}", json_output)
+            emit_error(f"Tool error: {msg}", json_output)
             return
 
         result = call_response.get("result", {})
@@ -125,21 +109,16 @@ async def call_tool(
         else:
             _print_result(tool_name, result)
 
+    except McpInitError as e:
+        emit_error(str(e), json_output)
     except asyncio.TimeoutError:
-        _error(f"Timed out after {timeout}s.", json_output)
+        emit_error(f"Timed out after {timeout}s.", json_output)
     except json.JSONDecodeError as e:
-        _error(f"Invalid JSON from server: {e}", json_output)
+        emit_error(f"Invalid JSON from server: {e}", json_output)
     except (ConnectionResetError, BrokenPipeError):
-        _error("Server closed connection unexpectedly.", json_output)
+        emit_error("Server closed connection unexpectedly.", json_output)
     finally:
         await transport.stop()
-
-
-def _error(msg: str, json_output: bool) -> None:
-    if json_output:
-        print(json.dumps({"error": msg}))
-    else:
-        console.print(f"[red]{msg}[/red]")
 
 
 def _print_result(tool_name: str, result: dict[str, Any]) -> None:
