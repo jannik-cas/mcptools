@@ -1,4 +1,8 @@
-"""Session replay — replays recorded MCP sessions."""
+"""Session replay — replays recorded MCP sessions.
+
+Reads a previously recorded session JSON file and re-displays the
+messages with their original timing (optionally sped up or filtered).
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,18 @@ async def run_replayer(
     speed: float = 1.0,
     filter_method: str | None = None,
 ) -> None:
-    """Replay a recorded MCP session."""
+    """Replay a recorded MCP session.
+
+    Reads the session file, optionally filters by method name, and
+    prints each message to the console with simulated timing.
+
+    Args:
+        session_path: Path to the recorded session JSON file.
+        speed: Playback speed multiplier (e.g. ``2.0`` for double speed).
+        filter_method: Optional glob pattern to filter messages by
+            method name (e.g. ``"tools/*"``).  Matching responses are
+            included automatically.
+    """
     with open(session_path) as f:
         session = json.load(f)
 

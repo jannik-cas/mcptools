@@ -16,6 +16,7 @@ from mcptools.config.parser import (
     find_config,
     load_config,
 )
+from mcptools.handshake import McpInitError, mcp_initialize
 from mcptools.jsonrpc import IdGenerator, make_request
 from mcptools.proxy.transport import StdioTransport
 
@@ -24,7 +25,18 @@ console = Console()
 
 @dataclass
 class CheckResult:
-    """Result of a single server health check."""
+    """Result of a single server health check.
+
+    Attributes:
+        server_name: Name of the server that was checked.
+        status: One of ``"healthy"``, ``"error"``, ``"warning"``, or ``"skipped"``.
+        message: Human-readable summary of the check outcome.
+        tool_count: Number of tools the server exposes.
+        resource_count: Number of resources the server exposes.
+        prompt_count: Number of prompts the server exposes.
+        latency_ms: Round-trip time of the health check in milliseconds.
+        details: Optional list of actionable hints for the user.
+    """
 
     server_name: str
     status: str  # "healthy", "error", "warning", "skipped"
@@ -37,7 +49,19 @@ class CheckResult:
 
 
 async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> CheckResult:
-    """Check health of a single MCP server."""
+    """Check health of a single MCP server.
+
+    Validates the server command, checks for unresolved environment
+    variables, then attempts to connect and enumerate capabilities.
+
+    Args:
+        name: Display name for this server entry.
+        server: Parsed server configuration.
+        timeout: Seconds to wait for the server to respond.
+
+    Returns:
+        A ``CheckResult`` summarising the server's health.
+    """
 
     # Check command exists
     if server.transport == "stdio" and not server.command:
@@ -85,39 +109,10 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
     start_time = time.time()
 
     try:
-        # Initialize
-        init_msg = make_request(
-            "initialize",
-            {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "mcptools-doctor", "version": "0.1.0"},
-            },
-            msg_id=ids.next(),
+        init_result = await mcp_initialize(
+            transport, timeout, ids=ids, client_name="mcptools-doctor"
         )
-        await transport.send(init_msg)
-        response = await asyncio.wait_for(transport.receive(), timeout=timeout)
-
-        if response is None:
-            return CheckResult(
-                server_name=name,
-                status="error",
-                message="Server closed connection during init",
-            )
-
-        if "error" in response:
-            error = response["error"]
-            msg = error.get("message", str(error)) if isinstance(error, dict) else str(error)
-            return CheckResult(
-                server_name=name,
-                status="error",
-                message=f"Init error: {msg}",
-            )
-
-        capabilities = response.get("result", {}).get("capabilities", {})
-
-        # Send initialized notification
-        await transport.send(make_request("notifications/initialized"))
+        capabilities = init_result.get("capabilities", {})
 
         tool_count = 0
         resource_count = 0
@@ -177,6 +172,12 @@ async def check_server(name: str, server: ServerConfig, timeout: int = 10) -> Ch
             latency_ms=latency,
         )
 
+    except McpInitError as e:
+        return CheckResult(
+            server_name=name,
+            status="error",
+            message=str(e),
+        )
     except asyncio.TimeoutError:
         return CheckResult(
             server_name=name,
@@ -217,7 +218,17 @@ async def run_doctor(
     timeout: int = 10,
     json_output: bool = False,
 ) -> None:
-    """Run health checks on MCP servers."""
+    """Run health checks on all configured MCP servers.
+
+    Loads the configuration, then checks each server concurrently.
+    Outputs results as a Rich-formatted table or as JSON.
+
+    Args:
+        config_path: Explicit path to a config file, or *None* to auto-detect.
+        server_names: Optional list of server names to check (default: all).
+        timeout: Seconds to wait per server.
+        json_output: If *True*, emit results as a JSON object.
+    """
     import json as json_mod
 
     # Find config

@@ -8,7 +8,8 @@ from pathlib import Path
 
 from rich.console import Console
 
-from mcptools.config.parser import load_config
+import mcptools
+from mcptools.config.parser import load_config, select_server
 from mcptools.proxy.interceptor import ProxyInterceptor, _print_message
 from mcptools.proxy.transport import McpMessage
 
@@ -16,7 +17,17 @@ console = Console(stderr=True)
 
 
 class SessionRecorder:
-    """Records MCP messages to a JSON file."""
+    """Records MCP messages to a JSON file.
+
+    Designed to be used as an *on_message* callback for
+    :class:`~mcptools.proxy.interceptor.ProxyInterceptor`.  Messages
+    are accumulated in memory and flushed to disk via :meth:`save`.
+
+    Attributes:
+        output_path: Destination file for the recorded session.
+        messages: Accumulated message dicts.
+        start_time: Epoch timestamp when recording began.
+    """
 
     def __init__(self, output_path: Path) -> None:
         self.output_path = output_path
@@ -24,7 +35,11 @@ class SessionRecorder:
         self.start_time = time.time()
 
     def on_message(self, msg: McpMessage) -> None:
-        """Callback for each intercepted message."""
+        """Callback for each intercepted message.
+
+        Args:
+            msg: The captured MCP message.
+        """
         self.messages.append(
             {
                 "timestamp": msg.timestamp,
@@ -36,9 +51,14 @@ class SessionRecorder:
         _print_message(msg)
 
     def save(self) -> None:
-        """Save recorded session to disk."""
+        """Save the recorded session to disk as JSON.
+
+        Creates parent directories if needed.  The file includes
+        metadata (version, duration, message count) alongside the
+        message array.
+        """
         session = {
-            "mcptools_version": "0.1.0",
+            "mcptools_version": mcptools.__version__,
             "recorded_at": self.start_time,
             "duration": time.time() - self.start_time,
             "message_count": len(self.messages),
@@ -58,25 +78,21 @@ async def run_recorder(
     output_path: Path = Path("session.json"),
     server_name: str | None = None,
 ) -> None:
-    """Run the proxy in recording mode."""
+    """Run the proxy in recording mode.
+
+    All intercepted messages are captured and written to *output_path*
+    when the session ends (Ctrl+C).
+
+    Args:
+        config_path: Explicit config file path, or *None* to auto-detect.
+        output_path: Destination file for the recorded session.
+        server_name: Name of the server to record (required when multiple
+            servers are configured).
+    """
     config = load_config(config_path)
 
-    if not config.servers:
-        console.print("[red]No MCP servers found in config.[/red]")
-        return
-
-    # Select server
-    if server_name:
-        if server_name not in config.servers:
-            console.print(f"[red]Server '{server_name}' not found.[/red]")
-            return
-        server_config = config.servers[server_name]
-    elif len(config.servers) == 1:
-        server_config = next(iter(config.servers.values()))
-    else:
-        console.print("[yellow]Multiple servers. Use --server to pick one:[/yellow]")
-        for name in config.servers:
-            console.print(f"  - {name}")
+    server_config = select_server(config, server_name)
+    if server_config is None:
         return
 
     recorder = SessionRecorder(output_path)

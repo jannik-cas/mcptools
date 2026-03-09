@@ -9,7 +9,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from mcptools.config.parser import ServerConfig, load_config
+from mcptools.config.parser import ServerConfig, load_config, select_server
 from mcptools.proxy.transport import McpMessage, StdinReader, StdioTransport, StdoutWriter
 
 console = Console(stderr=True)
@@ -19,7 +19,18 @@ MessageCallback = Callable[[McpMessage], None]
 
 
 class ProxyInterceptor:
-    """Intercepts MCP traffic between client and server."""
+    """Intercepts MCP traffic between client and server.
+
+    Sits between an MCP client (reading from stdin) and an MCP server
+    (spawned as a subprocess), capturing every JSON-RPC message that
+    passes through.  An optional *on_message* callback is invoked for
+    each captured message to drive the TUI or recording logic.
+
+    Attributes:
+        server_config: Configuration of the target MCP server.
+        on_message: Optional callback invoked for every intercepted message.
+        messages: Ordered list of all messages seen during the session.
+    """
 
     def __init__(
         self,
@@ -118,6 +129,7 @@ class ProxyInterceptor:
             self.on_message(msg)
 
     async def stop(self) -> None:
+        """Stop the proxy and terminate the server subprocess."""
         if self._transport:
             await self._transport.stop()
 
@@ -150,27 +162,24 @@ async def run_proxy(
     server_name: str | None = None,
     use_tui: bool = True,
 ) -> None:
-    """Run the MCP proxy."""
+    """Run the MCP proxy.
+
+    Loads the configuration, selects a server, and starts either the
+    TUI dashboard or plain log-mode proxy.
+
+    Args:
+        config_path: Explicit config file path, or *None* to auto-detect.
+        port: Reserved for future SSE proxy support.
+        server_name: Name of the server to proxy (required when multiple
+            servers are configured).
+        use_tui: If *True*, launch the interactive Textual dashboard.
+    """
     config = load_config(config_path)
 
-    if not config.servers:
-        console.print("[red]No MCP servers found in config.[/red]")
-        console.print("Provide a config with --config or place one in a known IDE location.")
-        return
-
-    # Select server
-    if server_name:
-        if server_name not in config.servers:
-            console.print(f"[red]Server '{server_name}' not found in config.[/red]")
-            console.print(f"Available: {', '.join(config.servers.keys())}")
-            return
-        server_config = config.servers[server_name]
-    elif len(config.servers) == 1:
-        server_config = next(iter(config.servers.values()))
-    else:
-        console.print("[yellow]Multiple servers found. Use --server to select one:[/yellow]")
-        for name in config.servers:
-            console.print(f"  - {name}")
+    server_config = select_server(config, server_name)
+    if server_config is None:
+        if not config.servers:
+            console.print("Provide a config with --config or place one in a known IDE location.")
         return
 
     if use_tui:
